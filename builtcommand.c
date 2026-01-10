@@ -1,0 +1,292 @@
+#include "main.h"
+
+char *builtins[] = {"echo", "printf", "read", "cd", "pwd", "pushd", "popd", "dirs", "let", "eval",
+					"set", "unset", "export", "declare", "typeset", "readonly", "getopts", "source",
+					"exit", "exec", "shopt", "caller", "true", "type", "hash", "bind", "help", NULL};
+
+static char cmd[100];
+
+char *get_command(char *command)
+{
+	int i = 0;
+	memset(cmd, 0, sizeof(cmd));
+	while (command[i] != '\0')
+	{
+		if (command[i] == ' ')
+		{
+			cmd[i] = '\0';
+			return cmd;
+		}
+		cmd[i] = command[i];
+
+		i++;
+	}
+	cmd[i] = '\0';
+	return cmd;
+}
+
+int check_command_type(char *command)
+{
+	// builtin command check
+	for (int i = 0; builtins[i] != NULL; i++)
+	{
+		if (strcmp(command, builtins[i]) == 0)
+			return BUILTIN;
+	}
+
+	// external command check
+	for (int i = 0; external_commands[i] != NULL; i++)
+	{
+		if (strcmp(command, external_commands[i]) == 0)
+			return EXTERNAL;
+	}
+	// no command
+	return NO_COMMAND;
+}
+
+void extract_external_commands(char **external_commands)
+{
+	int fd = open("external_command.txt", O_RDONLY);
+	if (fd == -1)
+	{
+		perror("open");
+		exit(1);
+	}
+
+	char str[100];
+	int index = 0;
+	int pos = 0;
+	char ch;
+
+	// printf("Loading external commands...\n");
+
+	while (read(fd, &ch, 1) > 0 && index < MAX_COMMAND - 1)
+	{
+		if (ch != '\n' && ch != '\r')
+		{
+			str[pos++] = ch;
+		}
+		else if (pos > 0)
+		{
+			str[pos] = '\0';
+			external_commands[index] = malloc(strlen(str) + 1);
+			if (external_commands[index] == NULL)
+			{
+				perror("malloc");
+				exit(1);
+			}
+			strcpy(external_commands[index], str);
+			index++;
+			pos = 0;
+		}
+	}
+
+	// load the last command
+	if (pos > 0 && index < MAX_COMMAND - 1)
+	{
+		str[pos] = '\0';
+		external_commands[index] = malloc(strlen(str) + 1);
+		if (external_commands[index] == NULL)
+		{
+			perror("malloc");
+			exit(1);
+		}
+		strcpy(external_commands[index], str);
+		index++;
+	}
+
+	// add NULL to the end of the array
+	external_commands[index] = NULL;
+	close(fd);
+	// printf("Loaded %d external commands\n", index);
+}
+
+void execute_internal_commands(char *input_string)
+{
+	if (strcmp(input_string, "exit") == 0)
+	{
+		exit(0);
+	}
+	else if (strcmp(input_string, "pwd") == 0)
+	{
+		char *pwd = getcwd(NULL, 0);
+		if (pwd == NULL)
+		{
+			perror("pwd");
+			return;
+		}
+		printf(ANSI_COLOR_CYAN "%s" ANSI_COLOR_RESET "\n", pwd);
+		free(pwd);
+	}
+	else if (strncmp(input_string, "cd ", 3) == 0)
+	{
+		char *path = input_string + 3;
+		if (chdir(path) != 0)
+		{
+			printf(ANSI_COLOR_RED "cd: " ANSI_COLOR_RESET);
+			perror(path);
+		}
+	}
+	else if (strncmp(input_string, "echo", 4) == 0)
+	{
+		char *msg = input_string + 4;
+
+		while (*msg == ' ')
+			msg++;
+
+		printf("%s\n", msg);
+	}
+	else
+	{
+		printf(ANSI_COLOR_YELLOW "Built-in command '%s' not yet implemented" ANSI_COLOR_RESET "\n", input_string);
+	}
+}
+
+void execute_external_commands(char *input_string)
+{
+	char input_copy[200];
+	strncpy(input_copy, input_string, sizeof(input_copy) - 1);
+	input_copy[sizeof(input_copy) - 1] = '\0';
+
+	char *cmds[MAX_COMMAND];
+	int index = 0;
+	char *token = strtok(input_copy, " ");
+	while (token != NULL)
+	{
+		cmds[index++] = token;
+		token = strtok(NULL, " ");
+	}
+	cmds[index] = NULL;
+
+	int pipe_found = 0;
+	for (int i = 0; cmds[i] != NULL; i++)
+	{
+		if (strcmp(cmds[i], "|") == 0)
+		{
+			pipe_found++;
+		}
+	}
+
+	if (!pipe_found)
+	{
+		// Direct execvp - parent already forked
+		execvp(cmds[0], cmds);
+		perror("execvp");
+		exit(1);
+	}
+	else
+	{
+		// implement pipe handling
+		int pipefd[pipe_found][2];
+		for (int i = 0; i < pipe_found; i++)
+		{
+			if (pipe(pipefd[i]) == -1)
+			{
+				perror("pipe");
+				exit(1);
+			}
+		}
+
+		int cmd_start = 0;
+
+		for (int i = 0; i <= pipe_found; i++)
+		{
+			char *argv[MAX_COMMAND];
+			int arg_index = 0;
+			while (cmds[cmd_start] && strcmp(cmds[cmd_start], "|") != 0)
+			{
+				argv[arg_index++] = cmds[cmd_start++];
+			}
+			argv[arg_index] = NULL;
+
+			cmd_start++;
+			pid_t process = fork();
+			if (process == 0)
+			{
+				if (i > 0)
+					dup2(pipefd[i - 1][0], 0);
+
+				if (i < pipe_found)
+					dup2(pipefd[i][1], 1);
+
+				for (int j = 0; j < pipe_found; j++)
+				{
+					close(pipefd[j][0]);
+					close(pipefd[j][1]);
+				}
+
+				execvp(argv[0], argv);
+				perror("execvp failed");
+				exit(1);
+			}
+		}
+
+		// Parent closes all pipes
+		for (int i = 0; i < pipe_found; i++)
+		{
+			close(pipefd[i][0]);
+			close(pipefd[i][1]);
+		}
+
+		// Wait for all child processes
+		for (int i = 0; i <= pipe_found; i++)
+		{
+			wait(NULL);
+		}
+		exit(0); // FIX: MUST HAVE THIS - Child process should exit after pipe execution
+	}
+}
+
+void insert_at_first(Slist **head, pid_t pid, char *input_string)
+{
+	Slist *new = malloc(sizeof(Slist));
+	if (new == NULL)
+	{
+		printf("Error: malloc failed\n");
+		return;
+	}
+	new->pid = pid;
+	strcpy(new->input_string, input_string);
+	int l = strlen(input_string);
+	new->input_string[l] = '\0';
+
+	if (*head == NULL)
+	{
+		*head = new;
+		new->link = NULL;
+		return;
+	}
+
+	new->link = *head;
+	*head = new;
+}
+
+void delete_element(Slist **head, pid_t pid)
+{
+	if (head == NULL || *head == NULL)
+		return;
+
+	Slist *temp = *head;
+	Slist *prev = NULL;
+
+	// Case 1: deleting head node
+	if (temp->pid == pid)
+	{
+		*head = temp->link;
+		free(temp);
+		return;
+	}
+
+	// Case 2: deleting non-head node
+	while (temp != NULL && temp->pid != pid)
+	{
+		prev = temp;
+		temp = temp->link;
+	}
+
+	if (temp != NULL)
+	{
+		prev->link = temp->link;
+		free(temp);
+	}
+}
