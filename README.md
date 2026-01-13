@@ -1,7 +1,9 @@
 MINI-SHELL (msh) PROJECT REQUIREMENTS
 
 Description:
-Implement a minimalistic shell, mini-shell (msh), as part of the Linux Internal module.
+MiniShell (msh) is a minimal UNIX-style shell implemented in C.
+It supports external command execution, built-in commands, pipes, job control, and signal handling.
+The project demonstrates core Linux system programming concepts.
 
 Objective:
 The objective of this project is to understand and use Linux system calls related to:

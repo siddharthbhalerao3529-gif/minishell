@@ -1,8 +1,10 @@
 /*
 name - siddharth bhalerao
 date - 13-1-26
-description - 
-*/ 
+description - MiniShell (msh) is a minimal UNIX-style shell implemented in C.
+              It supports external command execution, built-in commands, pipes, job control, and signal handling.
+              The project demonstrates core Linux system programming concepts.
+*/
 #include "main.h"
 
 char prompt[] = ANSI_COLOR_GREEN "minishell" ANSI_COLOR_RESET ":" ANSI_COLOR_BLUE "~" ANSI_COLOR_RESET "$ ";
