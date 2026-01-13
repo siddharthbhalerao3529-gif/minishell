@@ -17,8 +17,9 @@ char *get_command(char *command)
 			cmd[i] = '\0';
 			return cmd;
 		}
+		if (i >= 99)
+			break;
 		cmd[i] = command[i];
-
 		i++;
 	}
 	cmd[i] = '\0';
@@ -127,14 +128,21 @@ void execute_internal_commands(char *input_string)
 			perror(path);
 		}
 	}
-	else if (strncmp(input_string, "echo", 4) == 0)
+	else if (strstr(input_string, "echo $$") != NULL)
 	{
-		char *msg = input_string + 4;
-
-		while (*msg == ' ')
-			msg++;
-
-		printf("%s\n", msg);
+		printf("%d\n", getpid());
+	}
+	else if (strstr(input_string, "echo $SHELL") != NULL)
+	{
+		char *shell_path = getenv("SHELL");
+		if (shell_path != NULL)
+			printf("%s\n", shell_path);
+		else
+			printf("\n");
+	}
+	else if (strstr(input_string, "echo $?") != NULL)
+	{
+		printf("%d \n", WEXITSTATUS(status));
 	}
 	else
 	{
@@ -233,7 +241,8 @@ void execute_external_commands(char *input_string)
 		{
 			wait(NULL);
 		}
-		exit(0); // FIX: MUST HAVE THIS - Child process should exit after pipe execution
+
+		return;
 	}
 }
 
@@ -246,6 +255,8 @@ void insert_at_first(Slist **head, pid_t pid, char *input_string)
 		return;
 	}
 	new->pid = pid;
+	new->state = JOB_RUNNING;
+
 	strcpy(new->input_string, input_string);
 	int l = strlen(input_string);
 	new->input_string[l] = '\0';
@@ -289,4 +300,163 @@ void delete_element(Slist **head, pid_t pid)
 		prev->link = temp->link;
 		free(temp);
 	}
+}
+void print_list(Slist **head)
+{
+	if (head == NULL || *head == NULL) // FIXED: Check *head, not head
+	{
+		printf("No jobs running\n");
+		return;
+	}
+
+	// Clean up completed jobs first
+	Slist *temp = *head;
+	Slist *prev = NULL;
+
+	while (temp != NULL)
+	{
+		// Only remove if state is JOB_DONE
+		if (temp->state == JOB_DONE)
+		{
+			// Process is done, remove it
+			Slist *to_free = temp;
+
+			if (prev == NULL)
+			{
+				*head = temp->link;
+				temp = *head; // temp moves to new head
+							  // prev remains NULL for new head
+			}
+			else
+			{
+				prev->link = temp->link;
+				temp = temp->link; // temp moves to next node
+								   // prev stays the same (points to node before removed one)
+			}
+
+			free(to_free);
+		}
+		else
+		{
+			// For RUNNING or STOPPED jobs, just check if they're really alive
+			if (temp->state == JOB_RUNNING && kill(temp->pid, 0) == -1)
+			{
+				// Running job is dead, mark as done
+				temp->state = JOB_DONE;
+			}
+
+			prev = temp;
+			temp = temp->link;
+		}
+	}
+
+	// Rest of the function remains the same...
+	// Now print the list
+	temp = *head;
+	int job_num = 1;
+
+	if (temp == NULL)
+	{
+		printf("No jobs running\n");
+		return;
+	}
+
+	printf("[Job#]\tPID\tState\tCommand\n");
+	printf("------\t---\t-----\t-------\n");
+
+	while (temp != NULL)
+	{
+		const char *state_str = "Unknown";
+		if (temp->state == JOB_STOPPED)
+			state_str = "Stopped";
+		else if (temp->state == JOB_RUNNING)
+			state_str = "Running";
+		else if (temp->state == JOB_DONE)
+			state_str = "Done";
+
+		printf("[%d]\t%d\t%s\t%s\n", job_num++, temp->pid, state_str, temp->input_string);
+		temp = temp->link;
+	}
+}
+void update_job_state(Slist *head, pid_t pid, int state)
+{
+	Slist *temp = head;
+	while (temp != NULL)
+	{
+		if (temp->pid == pid)
+		{
+			temp->state = state;
+			break;
+		}
+		temp = temp->link;
+	}
+}
+
+Slist *get_job_by_number(Slist *head, int job_num)
+{
+	Slist *temp = head;
+	int count = 1;
+
+	while (temp != NULL)
+	{
+		if (count == job_num)
+			return temp;
+		temp = temp->link;
+		count++;
+	}
+	return NULL;
+}
+
+// Get job number by PID (1-based)
+int get_job_number(Slist *head, pid_t pid)
+{
+	Slist *temp = head;
+	int count = 1;
+
+	while (temp != NULL)
+	{
+		if (temp->pid == pid)
+			return count;
+		temp = temp->link;
+		count++;
+	}
+	return 0;
+}
+
+// Parse job specifier (returns job number or -1 for errors)
+int parse_job_specifier(char *spec, Slist *head)
+{
+	if (spec == NULL || spec[0] != '%')
+		return -1;
+
+	char *num_str = spec + 1;
+
+	// %+ or %% for current job (most recent)
+	if (strcmp(num_str, "+") == 0 || strcmp(num_str, "%") == 0)
+	{
+		if (head != NULL)
+			return 1; // Most recent is always job #1
+		return -1;
+	}
+
+	// %- for previous job
+	if (strcmp(num_str, "-") == 0)
+	{
+		if (head != NULL && head->link != NULL)
+			return 2; // Second job is previous
+		return -1;
+	}
+
+	// %n for job number n
+	char *endptr;
+	long job_num = strtol(num_str, &endptr, 10);
+
+	if (endptr == num_str || *endptr != '\0')
+		return -1; // Not a valid number
+
+	// Check if job exists
+	if (get_job_by_number(head, job_num) == NULL)
+		return -1;
+
+	return (int)job_num;
 }

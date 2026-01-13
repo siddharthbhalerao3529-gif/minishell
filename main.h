@@ -12,7 +12,11 @@
 #include <sys/wait.h>
 
 // ========== FORWARD DECLARATIONS ==========
-typedef struct Node Slist;  // Forward declaration
+typedef struct Node Slist; // Forward declaration
+
+#define JOB_STOPPED 0
+#define JOB_RUNNING 1
+#define JOB_DONE 2
 
 // ========== CONSTANTS ==========
 #define BUILTIN 1
@@ -30,9 +34,11 @@ typedef struct Node Slist;  // Forward declaration
 #define ANSI_COLOR_RESET "\x1b[0m"
 
 // ========== STRUCTURE DEFINITION ==========
-struct Node {
+struct Node
+{
     pid_t pid;
-    char input_string[30];
+    char input_string[100];
+    int state;
     struct Node *link;
 };
 
@@ -56,4 +62,10 @@ void extract_external_commands(char **external_commands);
 void insert_at_first(Slist **head, pid_t pid, char *input_string);
 void delete_element(Slist **head, pid_t pid);
 
+void print_list(Slist **head);
+void update_job_state(Slist *head, pid_t pid, int state);
+
+Slist* get_job_by_number(Slist *head, int job_num);
+int get_job_number(Slist *head, pid_t pid);
+int parse_job_specifier(char *spec, Slist *head);
 #endif

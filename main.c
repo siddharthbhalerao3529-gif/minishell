@@ -1,3 +1,8 @@
+/*
+name - siddharth bhalerao
+date - 13-1-26
+description - 
+*/ 
 #include "main.h"
 
 char prompt[] = ANSI_COLOR_GREEN "minishell" ANSI_COLOR_RESET ":" ANSI_COLOR_BLUE "~" ANSI_COLOR_RESET "$ ";
