@@ -23,7 +23,7 @@ void signal_handler(int sig_num)
         }
         else
         {
-            printf("\n");
+            printf("\n%s", prompt);
             fflush(stdout);
 
             // Find and stop the most recent running background job
@@ -191,7 +191,8 @@ void scan_input(char *prompt, char *input_string)
                     if (run_in_background)
                     {
                         // Background job: Ignore SIGTSTP so Ctrl+Z doesn't affect it
-                        // signal(SIGTSTP, SIG_IGN);
+                        signal(SIGTSTP, SIG_IGN);
+                        signal(SIGINT, SIG_IGN);
                     }
                     else
                     {
