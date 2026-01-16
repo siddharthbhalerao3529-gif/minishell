@@ -2,7 +2,7 @@
 
 char *builtins[] = {"echo", "printf", "read", "cd", "pwd", "pushd", "popd", "dirs", "let", "eval",
 					"set", "unset", "export", "declare", "typeset", "readonly", "getopts", "source",
-					"exit", "exec", "shopt", "caller", "true", "type", "hash", "bind", "help", NULL};
+					"exit", "exec", "shopt", "caller", "true", "type", "hash", "bind", "help", "clear", NULL};
 
 static char cmd[100];
 
@@ -118,6 +118,11 @@ void execute_internal_commands(char *input_string)
 		}
 		printf(ANSI_COLOR_CYAN "%s" ANSI_COLOR_RESET "\n", pwd);
 		free(pwd);
+	}
+	else if (strcmp(input_string, "clear") == 0)
+	{
+		printf("\033[2J\033[H");
+		fflush(stdout);
 	}
 	else if (strncmp(input_string, "cd ", 3) == 0)
 	{

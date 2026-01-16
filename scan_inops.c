@@ -19,7 +19,10 @@ void signal_handler(int sig_num)
     {
         if (pid > 0) // We have a foreground process
         {
-            kill(pid, SIGTSTP);
+            // kill(pid, SIGTSTP);
+            // insert to list
+            insert_at_first(&head, pid, input_string);
+            update_job_state(head, pid, JOB_STOPPED);
         }
         else
         {
@@ -27,27 +30,28 @@ void signal_handler(int sig_num)
             fflush(stdout);
 
             // Find and stop the most recent running background job
-            Slist *temp = head;
-            while (temp != NULL)
-            {
-                if (temp->state == JOB_RUNNING)
-                {
-                    // Try to stop this background job
-                    if (kill(temp->pid, SIGTSTP) == 0)
-                    {
-                        // The job will be marked as stopped by SIGCHLD handler
-                        break;
-                    }
-                }
-                temp = temp->link;
-            }
+            // Slist *temp = head;
+            // while (temp != NULL)
+            // {
+            //     if (temp->state == JOB_RUNNING)
+            //     {
+            //         // Try to stop this background job
+            //         if (kill(temp->pid, SIGTSTP) == 0)
+            //         {
+            //             // The job will be marked as stopped by SIGCHLD handler
+            //             break;
+            //         }
+            //     }
+            //     temp = temp->link;
+            // }
         }
     }
     else if (sig_num == SIGCHLD)
     {
+        // waitpid(-1, &child_status, WNOHANG);
         pid_t child_pid = 0;
         int child_status = 0;
-        while ((child_pid = waitpid(-1, &child_status, WNOHANG | WUNTRACED)) > 0)
+        while ((child_pid = waitpid(-1, &child_status, WNOHANG)) > 0)
         {
             if (child_pid > 0)
             {
@@ -58,12 +62,12 @@ void signal_handler(int sig_num)
                     if (temp->pid == child_pid)
                     {
                         found = 1;
-                        if (WIFSTOPPED(child_status))
-                        {
-                            temp->state = JOB_STOPPED;
-                            printf("\n[%d]+ Stopped\t%s\n", child_pid, temp->input_string);
-                        }
-                        else if (WIFEXITED(child_status) || WIFSIGNALED(child_status))
+                        // if (WIFSTOPPED(child_status))
+                        // {
+                        //     temp->state = JOB_STOPPED;
+                        //     printf("\n[%d]+ Stopped\t%s\n", child_pid, temp->input_string);
+                        // }
+                        if (WIFEXITED(child_status) || WIFSIGNALED(child_status))
                         {
                             if (child_pid != pid)
                             {
@@ -94,6 +98,7 @@ void scan_input(char *prompt, char *input_string)
     signal(SIGINT, signal_handler);
     signal(SIGTSTP, signal_handler);
     signal(SIGCHLD, signal_handler);
+    char str1[200];
 
     while (1)
     {
@@ -103,12 +108,16 @@ void scan_input(char *prompt, char *input_string)
         printf("%s", prompt);
         fflush(stdout);
 
-        scanf(" %199[^\n]", input_string);
+        // scanf(" %199[^\n]", input_string);
 
+        fgets(input_string, 200, stdin);
+
+        input_string[strcspn(input_string, "\n")] = '\0';
         if (strlen(input_string) == 0)
         {
             continue;
         }
+        strcpy(str1, input_string);
 
         if (strncmp(input_string, "PS1=", 4) == 0)
         {
@@ -165,7 +174,7 @@ void scan_input(char *prompt, char *input_string)
                     if (run_in_background)
                     {
                         // Background job
-                        insert_at_first(&head, pid, input_string);
+                        insert_at_first(&head, pid, str1);
                         update_job_state(head, pid, JOB_RUNNING);
                         printf("[%d] %d\n", get_job_number(head, pid), pid);
                         pid = 0; // No foreground process
@@ -178,8 +187,8 @@ void scan_input(char *prompt, char *input_string)
 
                         if (WIFSTOPPED(child_status))
                         {
-                            insert_at_first(&head, pid, input_string);
-                            update_job_state(head, pid, JOB_STOPPED);
+                            // insert_at_first(&head, pid, input_string);
+                            // update_job_state(head, pid, JOB_STOPPED);
                             printf("\n[%d]+ Stopped\t%s\n", pid, input_string);
                         }
                         pid = 0;
